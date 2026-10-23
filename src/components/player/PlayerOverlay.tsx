@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { CenterPlaybackControls } from './CenterPlaybackControls';
 import { TimelineScrubber } from './TimelineScrubber';
@@ -53,17 +54,32 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
   onToggleFullscreen,
   onOpenTracksMenu,
 }) => {
+  const insets = useSafeAreaInsets();
+
+  // Dynamic notch-safe padding for top and bottom bars
+  const topBarPaddingStyle = {
+    paddingTop: Math.max(insets.top, 14),
+    paddingLeft: Math.max(insets.left, SPACING.md),
+    paddingRight: Math.max(insets.right, SPACING.md),
+  };
+
+  const bottomBarPaddingStyle = {
+    paddingBottom: Math.max(insets.bottom, 12),
+    paddingLeft: Math.max(insets.left, SPACING.md),
+    paddingRight: Math.max(insets.right, SPACING.md),
+  };
+
   return (
     <View style={styles.overlayContainer} pointerEvents="box-none">
       {/* 2x Speed Boost Banner (Hold to 2x indicator) */}
       {isSpeedBoosted && (
-        <View style={styles.speedBoostBanner}>
+        <View style={[styles.speedBoostBanner, { top: Math.max(insets.top + 8, 45) }]}>
           <Text style={styles.speedBoostText}>2x Speed &gt;&gt;</Text>
         </View>
       )}
 
-      {/* Top Controls Bar */}
-      <SafeAreaView style={styles.topBar}>
+      {/* Top Controls Bar - Notch Safe */}
+      <View style={[styles.topBar, topBarPaddingStyle]}>
         <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
           <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
         </TouchableOpacity>
@@ -74,7 +90,7 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
           </Text>
         </View>
 
-        {/* Phase 5: Audio stream selector trigger */}
+        {/* Audio stream selector trigger */}
         {onOpenTracksMenu && audioTracksCount > 0 && (
           <TouchableOpacity
             style={styles.pillButton}
@@ -86,7 +102,7 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
           </TouchableOpacity>
         )}
 
-        {/* Phase 5: Subtitle track selector trigger */}
+        {/* Subtitle track selector trigger */}
         {onOpenTracksMenu && (
           <TouchableOpacity
             style={styles.pillButton}
@@ -108,7 +124,7 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
             <Text style={styles.pillButtonText}>{playbackSpeed}x</Text>
           </TouchableOpacity>
         )}
-      </SafeAreaView>
+      </View>
 
       {/* Center Controls */}
       <View style={styles.centerContainer} pointerEvents="box-none">
@@ -121,8 +137,8 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
         />
       </View>
 
-      {/* Bottom Controls Bar */}
-      <SafeAreaView style={styles.bottomBar}>
+      {/* Bottom Controls Bar - Notch & Gesture Bar Safe */}
+      <View style={[styles.bottomBar, bottomBarPaddingStyle]}>
         {/* Timeline Scrubber */}
         <TimelineScrubber
           currentTime={currentTime}
@@ -162,7 +178,7 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
             </TouchableOpacity>
           )}
         </View>
-      </SafeAreaView>
+      </View>
     </View>
   );
 };
@@ -176,9 +192,8 @@ const styles = StyleSheet.create({
   },
   speedBoostBanner: {
     position: 'absolute',
-    top: 50,
     alignSelf: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 20,
@@ -195,10 +210,9 @@ const styles = StyleSheet.create({
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
     gap: 8,
+    paddingBottom: SPACING.xs,
   },
   backButton: {
     width: 40,
@@ -238,15 +252,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   bottomBar: {
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     paddingTop: SPACING.xs,
-    paddingBottom: SPACING.sm,
   },
   bottomActionsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: SPACING.md,
+    paddingHorizontal: SPACING.xs,
     paddingTop: 2,
   },
   bottomLeftActions: {

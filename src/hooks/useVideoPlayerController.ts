@@ -3,7 +3,72 @@ import { AppState, AppStateStatus } from 'react-native';
 import { VideoRef, OnProgressData, OnLoadData, OnBufferData } from 'react-native-video';
 import { PlaybackSpeed, AudioTrack, TextTrack } from '../types/video';
 
-const AUTO_HIDE_DELAY_MS = 3500; // Step 6.2: 3.5s inactivity countdown
+const AUTO_HIDE_DELAY_MS = 3500;
+
+export interface CodecDiagnostic {
+  isDecoderInitFailed: boolean;
+  failedCategory: 'audio' | 'video' | 'unknown';
+  detectedCodec?: string;
+  userExplanation: string;
+}
+
+export function parseExoPlayerError(error: any): CodecDiagnostic {
+  const errObj = error?.error || {};
+  const rawMsg = errObj.errorString || error?.message || '';
+  const stack = errObj.errorStackTrace || errObj.errorException || '';
+  const fullText = `${rawMsg} ${stack}`;
+
+  const isDecoderInitFailed =
+    fullText.toLowerCase().includes('decoder_init_failed') ||
+    fullText.includes('ERROR_CODE_DECODER_INIT_FAILED') ||
+    fullText.includes('DecoderInitializationException');
+
+  let failedCategory: 'audio' | 'video' | 'unknown' = 'unknown';
+  let detectedCodec: string | undefined = undefined;
+
+  if (fullText.includes('audio/vnd.dts') || fullText.toLowerCase().includes('dts')) {
+    failedCategory = 'audio';
+    detectedCodec = 'DTS Surround Audio';
+  } else if (fullText.includes('audio/true-hd') || fullText.toLowerCase().includes('truehd')) {
+    failedCategory = 'audio';
+    detectedCodec = 'Dolby TrueHD Audio';
+  } else if (fullText.includes('audio/eac3') || fullText.includes('audio/ac3')) {
+    failedCategory = 'audio';
+    detectedCodec = 'Dolby Digital (AC3/EAC3)';
+  } else if (fullText.includes('audio/')) {
+    failedCategory = 'audio';
+    detectedCodec = 'Unsupported Audio Format';
+  } else if (fullText.includes('video/hevc') || fullText.toLowerCase().includes('hevc')) {
+    failedCategory = 'video';
+    detectedCodec = 'HEVC / H.265 (10-bit)';
+  } else if (fullText.includes('video/av01') || fullText.toLowerCase().includes('av1')) {
+    failedCategory = 'video';
+    detectedCodec = 'AV1 Video';
+  } else if (fullText.includes('video/')) {
+    failedCategory = 'video';
+    detectedCodec = 'High-Bitrate Video Stream';
+  }
+
+  let userExplanation = '';
+  if (isDecoderInitFailed) {
+    if (failedCategory === 'audio') {
+      userExplanation = `The audio stream is encoded in ${detectedCodec || 'an unsupported format'}, which your phone's Android hardware decoder does not support. (Players like VLC play this because they bundle software FFmpeg decoders).`;
+    } else if (failedCategory === 'video') {
+      userExplanation = `The video stream is encoded in ${detectedCodec || 'a high-profile format'} that exceeds your phone's hardware decoder capabilities.`;
+    } else {
+      userExplanation = `Hardware decoder initialization failed. This commonly occurs with multi-channel surround audio (DTS/Dolby) or 10-bit HDR video profiles.`;
+    }
+  } else {
+    userExplanation = rawMsg || 'A playback error occurred.';
+  }
+
+  return {
+    isDecoderInitFailed,
+    failedCategory,
+    detectedCodec,
+    userExplanation,
+  };
+}
 
 export interface UseVideoPlayerControllerProps {
   initialDuration?: number;
@@ -29,25 +94,38 @@ export function useVideoPlayerController({ initialDuration = 0 }: UseVideoPlayer
   // Effective speed (2.0x during hold; reverts to baseSpeed on release)
   const effectiveSpeed = isSpeedBoosted ? 2.0 : baseSpeed;
 
-  // UI overlay visibility & Step 6.2 Auto-hide Timer
+  // UI overlay visibility & Auto-hide Timer
   const [showControls, setShowControls] = useState<boolean>(true);
   const autoHideTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Phase 4: YouTube Double-Tap Seek Accumulation
+  // YouTube Double-Tap Seek Accumulation
   const [doubleTapSide, setDoubleTapSide] = useState<'left' | 'right' | null>(null);
   const [accumulatedSeek, setAccumulatedSeek] = useState<number>(0);
   const doubleTapTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Phase 5: Audio & Subtitle Tracks
+  // Audio & Subtitle Tracks
   const [audioTracks, setAudioTracks] = useState<AudioTrack[]>([]);
   const [textTracks, setTextTracks] = useState<TextTrack[]>([]);
   const [selectedAudioTrackIndex, setSelectedAudioTrackIndex] = useState<number | null>(null);
   const [selectedTextTrackIndex, setSelectedTextTrackIndex] = useState<number | null>(null);
 
-  // Phase 6: Step 6.4 Error Fallback State
+  // Codec Error & Diagnostic State
   const [playerError, setPlayerError] = useState<string | null>(null);
+  const [diagnostic, setDiagnostic] = useState<CodecDiagnostic | null>(null);
+  const [playerKey, setPlayerKey] = useState<number>(1);
+  const [isAudioMutedFallback, setIsAudioMutedFallback] = useState<boolean>(false);
+  const hasAttemptedAudioFallbackRef = useRef<boolean>(false);
 
-  // Step 6.2: Reset & run 3.5-second inactivity countdown
+  // Clean up player reference on unmount to free hardware decoders
+  useEffect(() => {
+    return () => {
+      if (autoHideTimerRef.current) clearTimeout(autoHideTimerRef.current);
+      if (doubleTapTimeoutRef.current) clearTimeout(doubleTapTimeoutRef.current);
+      setIsPlaying(false);
+    };
+  }, []);
+
+  // Reset & run 3.5-second inactivity countdown
   const resetInactivityTimer = useCallback(() => {
     if (autoHideTimerRef.current) {
       clearTimeout(autoHideTimerRef.current);
@@ -61,7 +139,6 @@ export function useVideoPlayerController({ initialDuration = 0 }: UseVideoPlayer
     }
   }, [showControls, isPlaying, isScrubbing]);
 
-  // Restart timer when controls visibility or playback state changes
   useEffect(() => {
     resetInactivityTimer();
     return () => {
@@ -71,11 +148,11 @@ export function useVideoPlayerController({ initialDuration = 0 }: UseVideoPlayer
     };
   }, [resetInactivityTimer]);
 
-  // Step 6.3: OS AppState Interruption (Phone calls, screen lock, background)
+  // OS AppState Interruption
   useEffect(() => {
     const handleAppStateChange = (nextState: AppStateStatus) => {
       if (nextState.match(/inactive|background/)) {
-        setIsPlaying(false); // Pause so user doesn't lose position
+        setIsPlaying(false);
       }
     };
 
@@ -193,10 +270,12 @@ export function useVideoPlayerController({ initialDuration = 0 }: UseVideoPlayer
     [seekTo, resetInactivityTimer]
   );
 
-  // Native video event callbacks
+  // Stream Metadata Extraction on Load
   const onLoad = useCallback((data: OnLoadData) => {
     setIsBuffering(false);
     setPlayerError(null);
+    setDiagnostic(null);
+    hasAttemptedAudioFallbackRef.current = false;
     if (data.duration && data.duration > 0) {
       setDuration(data.duration);
     }
@@ -224,7 +303,7 @@ export function useVideoPlayerController({ initialDuration = 0 }: UseVideoPlayer
         index: typeof item.index === 'number' ? item.index : idx,
         title: item.title || '',
         language: item.language || '',
-        type: item.type,
+        type: item.type ? String(item.type) : undefined,
         selected: item.selected,
       }));
       setTextTracks(parsedText);
@@ -240,7 +319,10 @@ export function useVideoPlayerController({ initialDuration = 0 }: UseVideoPlayer
 
   const selectAudioTrack = useCallback((index: number) => {
     setSelectedAudioTrackIndex(index);
-    setPlayerError(null); // Clear previous codec errors when user switches stream
+    setIsAudioMutedFallback(false);
+    setPlayerError(null);
+    setDiagnostic(null);
+    setPlayerKey((k) => k + 1); // remount native player to reset decoder state
     resetInactivityTimer();
   }, [resetInactivityTimer]);
 
@@ -268,29 +350,56 @@ export function useVideoPlayerController({ initialDuration = 0 }: UseVideoPlayer
   const onEnd = useCallback(() => {
     setIsPlaying(false);
     setCurrentTime(duration);
-    setShowControls(true); // Always reveal controls when movie finishes
+    setShowControls(true);
   }, [duration]);
 
-  // Step 6.4: Native Codec & Media Error Callback
+  // Codec & Media Error Callback with deep diagnostics & auto audio fallback
   const onError = useCallback((error: any) => {
     setIsBuffering(false);
-    const msg =
-      error?.error?.errorString ||
-      error?.error?.localizedDescription ||
-      error?.message ||
-      'This video stream or audio codec is not supported by the device hardware decoder.';
-    setPlayerError(msg);
+    const parsed = parseExoPlayerError(error);
+    setDiagnostic(parsed);
+
+    if (parsed.isDecoderInitFailed) {
+      // If the failure is specifically an audio decoder issue and there are other tracks
+      if (parsed.failedCategory === 'audio' && audioTracks.length > 1 && !hasAttemptedAudioFallbackRef.current) {
+        hasAttemptedAudioFallbackRef.current = true;
+        const nextIndex = selectedAudioTrackIndex === 0 ? 1 : 0;
+        console.warn(`Audio decoder failed (${parsed.detectedCodec}). Auto-switching to audio track index ${nextIndex}`);
+        setSelectedAudioTrackIndex(nextIndex);
+        setPlayerError(null);
+        setPlayerKey((k) => k + 1); // Force fresh native instance
+        setIsPlaying(true);
+        return;
+      }
+
+      setPlayerError(parsed.userExplanation);
+    } else {
+      setPlayerError(parsed.userExplanation);
+    }
+  }, [audioTracks, selectedAudioTrackIndex]);
+
+  // Watch video-only (mutes/disables failing audio stream so video plays smoothly with subtitles)
+  const playWithoutAudio = useCallback(() => {
+    setIsAudioMutedFallback(true);
+    setPlayerError(null);
+    setDiagnostic(null);
+    setIsBuffering(true);
+    setIsPlaying(true);
+    setPlayerKey((k) => k + 1); // Remount native player cleanly
   }, []);
 
   const retryPlayback = useCallback(() => {
     setPlayerError(null);
+    setDiagnostic(null);
     setIsBuffering(true);
     setIsPlaying(true);
-    playerRef.current?.seek(currentTime);
-  }, [currentTime]);
+    hasAttemptedAudioFallbackRef.current = false;
+    setPlayerKey((k) => k + 1); // Remount to clear Android MediaCodec allocation table
+  }, []);
 
   return {
     playerRef,
+    playerKey,
     // Playback states
     isPlaying,
     isBuffering,
@@ -302,6 +411,7 @@ export function useVideoPlayerController({ initialDuration = 0 }: UseVideoPlayer
     scrubTime,
     onSlidingStart,
     onSlidingChange,
+    onValueChange: onSlidingChange,
     onSlidingComplete,
     // Speed management
     baseSpeed,
@@ -322,13 +432,16 @@ export function useVideoPlayerController({ initialDuration = 0 }: UseVideoPlayer
     selectedTextTrackIndex,
     selectAudioTrack,
     selectTextTrack,
+    isAudioMutedFallback,
+    playWithoutAudio,
     // UI visibility & Inactivity timer
     showControls,
     setShowControls,
     toggleControls,
     resetInactivityTimer,
-    // Phase 6: Codec Error Handling
+    // Codec Error & Diagnostics
     playerError,
+    diagnostic,
     onError,
     retryPlayback,
     // Controls actions
