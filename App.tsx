@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { StyleSheet, BackHandler } from 'react-native';
+import { View, StyleSheet, BackHandler } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { MediaLibraryProvider } from './src/context/MediaLibraryContext';
 import { LibraryScreen } from './src/screens/LibraryScreen';
 import { PlayerScreen } from './src/screens/PlayerScreen';
 import { VideoAsset } from './src/types/video';
@@ -24,13 +26,23 @@ export default function App() {
   }, [selectedVideo]);
 
   return (
-    <GestureHandlerRootView style={styles.container}>
-      {selectedVideo ? (
-        <PlayerScreen asset={selectedVideo} onClose={() => setSelectedVideo(null)} />
-      ) : (
-        <LibraryScreen onSelectVideo={(asset) => setSelectedVideo(asset)} />
-      )}
-    </GestureHandlerRootView>
+    <SafeAreaProvider>
+      <GestureHandlerRootView style={styles.container}>
+        <MediaLibraryProvider>
+          <View style={styles.container}>
+            {/* LibraryScreen remains mounted permanently in background to preserve scroll and state */}
+            <LibraryScreen onSelectVideo={(asset) => setSelectedVideo(asset)} />
+
+            {/* PlayerScreen mounts as an absolute overlay when a video is selected */}
+            {selectedVideo && (
+              <View style={StyleSheet.absoluteFill}>
+                <PlayerScreen asset={selectedVideo} onClose={() => setSelectedVideo(null)} />
+              </View>
+            )}
+          </View>
+        </MediaLibraryProvider>
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 }
 

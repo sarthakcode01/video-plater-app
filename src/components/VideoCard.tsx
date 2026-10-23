@@ -55,7 +55,7 @@ export const VideoCard: React.FC<VideoCardProps> = ({ asset, onPress, layout = '
               <View
                 style={[
                   styles.progressBarFill,
-                  { width: `${asset.watchProgressPercent}%` },
+                  { width: `${Math.min(100, Math.max(0, asset.watchProgressPercent || 0))}%` as `${number}%` },
                 ]}
               />
             </View>
@@ -112,7 +112,7 @@ export const VideoCard: React.FC<VideoCardProps> = ({ asset, onPress, layout = '
             <View
               style={[
                 styles.progressBarFill,
-                { width: `${asset.watchProgressPercent}%` },
+                { width: `${Math.min(100, Math.max(0, asset.watchProgressPercent || 0))}%` as `${number}%` },
               ]}
             />
           </View>
