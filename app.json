@@ -1,0 +1,66 @@
+{
+  "expo": {
+    "name": "Mobile Movie & Video Player",
+    "slug": "mobile-video-player",
+    "version": "1.0.0",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": false,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F1016"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.anonymous.mobilevideoplayer",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "This app requires access to your photo and video library to browse and play local movies and videos.",
+        "UIBackgroundModes": [
+          "audio"
+        ]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0F1016"
+      },
+      "package": "com.anonymous.mobilevideoplayer",
+      "permissions": [
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.ACCESS_MEDIA_LOCATION"
+      ]
+    },
+    "plugins": [
+      "expo-dev-client",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Grant permission to access and play your local videos.",
+          "savePhotosPermission": "Grant permission to save videos.",
+          "isAccessMediaLocationEnabled": true
+        }
+      ],
+      [
+        "expo-screen-orientation",
+        {
+          "initialOrientation": "DEFAULT"
+        }
+      ],
+      [
+        "react-native-video",
+        {}
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "4f452800-2a51-4967-9e68-8e1c2c7bb017"
+      }
+    },
+    "owner": "sarthak_code"
+  }
+}
