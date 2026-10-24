@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, BackHandler, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import * as NavigationBar from 'expo-navigation-bar';
+import { SafeNavigationBar } from './src/utils/safeNavigationBar';
 import { MediaLibraryProvider } from './src/context/MediaLibraryContext';
 import { LibraryScreen } from './src/screens/LibraryScreen';
 import { PlayerScreen } from './src/screens/PlayerScreen';
@@ -15,8 +15,8 @@ export default function App() {
   // Configure Android System Navigation Bar to match dark theme (prevent white navigation bar)
   useEffect(() => {
     if (Platform.OS === 'android') {
-      NavigationBar.setBackgroundColorAsync('#0B0C10');
-      NavigationBar.setButtonStyleAsync('light');
+      SafeNavigationBar.setBackgroundColorAsync('#0B0C10');
+      SafeNavigationBar.setButtonStyleAsync('light');
     }
   }, []);
 

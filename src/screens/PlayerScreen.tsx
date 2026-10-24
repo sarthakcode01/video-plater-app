@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import Video, { SelectedTrackType } from 'react-native-video';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as NavigationBar from 'expo-navigation-bar';
+import { SafeNavigationBar } from '../utils/safeNavigationBar';
 import { VideoAsset, PlaybackSpeed } from '../types/video';
 import { useVideoPlayerController } from '../hooks/useVideoPlayerController';
 import { useOrientation } from '../hooks/useOrientation';
@@ -91,15 +91,15 @@ export const PlayerScreen: React.FC<PlayerScreenProps> = ({ asset, onClose }) =>
   // Manage Android Navigation Bar for immersive video playback (black theme, auto-hide)
   useEffect(() => {
     if (Platform.OS === 'android') {
-      NavigationBar.setBackgroundColorAsync('#000000');
-      NavigationBar.setButtonStyleAsync('light');
-      NavigationBar.setBehaviorAsync('overlay-swipe');
+      SafeNavigationBar.setBackgroundColorAsync('#000000');
+      SafeNavigationBar.setButtonStyleAsync('light');
+      SafeNavigationBar.setBehaviorAsync('overlay-swipe');
     }
     return () => {
       if (Platform.OS === 'android') {
-        NavigationBar.setBackgroundColorAsync('#0B0C10');
-        NavigationBar.setButtonStyleAsync('light');
-        NavigationBar.setVisibilityAsync('visible');
+        SafeNavigationBar.setBackgroundColorAsync('#0B0C10');
+        SafeNavigationBar.setButtonStyleAsync('light');
+        SafeNavigationBar.setVisibilityAsync('visible');
       }
     };
   }, []);
@@ -107,9 +107,9 @@ export const PlayerScreen: React.FC<PlayerScreenProps> = ({ asset, onClose }) =>
   useEffect(() => {
     if (Platform.OS === 'android') {
       if (isFullscreen || !showControls) {
-        NavigationBar.setVisibilityAsync('hidden');
+        SafeNavigationBar.setVisibilityAsync('hidden');
       } else {
-        NavigationBar.setVisibilityAsync('visible');
+        SafeNavigationBar.setVisibilityAsync('visible');
       }
     }
   }, [isFullscreen, showControls]);
