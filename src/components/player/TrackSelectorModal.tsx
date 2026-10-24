@@ -19,6 +19,8 @@ interface TrackSelectorModalProps {
   textTracks: TextTrack[];
   selectedAudioIndex: number | null;
   selectedTextIndex: number | null;
+  isAudioMuted?: boolean;
+  onDisableAudio?: () => void;
   onSelectAudio: (index: number) => void;
   onSelectSubtitle: (index: number | null) => void;
   initialTab?: 'audio' | 'subtitles';
@@ -31,6 +33,8 @@ export const TrackSelectorModal: React.FC<TrackSelectorModalProps> = ({
   textTracks,
   selectedAudioIndex,
   selectedTextIndex,
+  isAudioMuted = false,
+  onDisableAudio,
   onSelectAudio,
   onSelectSubtitle,
   initialTab = 'audio',
@@ -115,43 +119,69 @@ export const TrackSelectorModal: React.FC<TrackSelectorModalProps> = ({
           {/* List Content */}
           <ScrollView style={styles.scrollList} contentContainerStyle={styles.scrollContent}>
             {activeTab === 'audio' ? (
-              audioTracks.length === 0 ? (
-                <View style={styles.emptyContainer}>
-                  <Text style={styles.emptyText}>Default audio track active</Text>
-                </View>
-              ) : (
-                audioTracks.map((track) => {
-                  const isSelected = selectedAudioIndex === track.index;
-                  return (
-                    <TouchableOpacity
-                      key={`audio-${track.index}`}
-                      style={[styles.optionItem, isSelected && styles.optionItemSelected]}
-                      onPress={() => {
-                        onSelectAudio(track.index);
-                        onClose();
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.trackInfo}>
-                        <Text
-                          style={[
-                            styles.optionLabel,
-                            isSelected && styles.optionLabelSelected,
-                          ]}
-                        >
-                          {formatTrackLabel(track, 'Audio')}
-                        </Text>
-                        {track.language ? (
-                          <Text style={styles.optionSub}>Code: {track.language.toUpperCase()}</Text>
-                        ) : null}
-                      </View>
-                      {isSelected && (
-                        <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />
-                      )}
-                    </TouchableOpacity>
-                  );
-                })
-              )
+              <>
+                {/* Option to mute/disable audio (for movies with unsupported hardware decoders like Dolby AC3) */}
+                {onDisableAudio && (
+                  <TouchableOpacity
+                    style={[styles.optionItem, isAudioMuted && styles.optionItemSelected]}
+                    onPress={() => {
+                      onDisableAudio();
+                      onClose();
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.trackInfo}>
+                      <Text style={[styles.optionLabel, isAudioMuted && styles.optionLabelSelected]}>
+                        Disabled (Subtitle Mode)
+                      </Text>
+                      <Text style={styles.optionSub}>
+                        Mute audio stream (bypasses unsupported Dolby / DTS codecs)
+                      </Text>
+                    </View>
+                    {isAudioMuted && (
+                      <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />
+                    )}
+                  </TouchableOpacity>
+                )}
+
+                {audioTracks.length === 0 ? (
+                  <View style={styles.emptyContainer}>
+                    <Text style={styles.emptyText}>Default audio track active</Text>
+                  </View>
+                ) : (
+                  audioTracks.map((track) => {
+                    const isSelected = !isAudioMuted && selectedAudioIndex === track.index;
+                    return (
+                      <TouchableOpacity
+                        key={`audio-${track.index}`}
+                        style={[styles.optionItem, isSelected && styles.optionItemSelected]}
+                        onPress={() => {
+                          onSelectAudio(track.index);
+                          onClose();
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.trackInfo}>
+                          <Text
+                            style={[
+                              styles.optionLabel,
+                              isSelected && styles.optionLabelSelected,
+                            ]}
+                          >
+                            {formatTrackLabel(track, 'Audio')}
+                          </Text>
+                          {track.language ? (
+                            <Text style={styles.optionSub}>Code: {track.language.toUpperCase()}</Text>
+                          ) : null}
+                        </View>
+                        {isSelected && (
+                          <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
+              </>
             ) : (
               <>
                 {/* Off / Disabled Subtitles Option */}

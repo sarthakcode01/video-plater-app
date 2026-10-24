@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import Video, { SelectedTrackType } from 'react-native-video';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as NavigationBar from 'expo-navigation-bar';
 import { VideoAsset, PlaybackSpeed } from '../types/video';
 import { useVideoPlayerController } from '../hooks/useVideoPlayerController';
 import { useOrientation } from '../hooks/useOrientation';
@@ -70,6 +71,8 @@ export const PlayerScreen: React.FC<PlayerScreenProps> = ({ asset, onClose }) =>
     selectTextTrack,
     isAudioMutedFallback,
     playWithoutAudio,
+    audioNotice,
+    dismissAudioNotice,
     showControls,
     toggleControls,
     togglePlayPause,
@@ -84,6 +87,32 @@ export const PlayerScreen: React.FC<PlayerScreenProps> = ({ asset, onClose }) =>
     onBuffer,
     onEnd,
   } = useVideoPlayerController({ initialDuration: asset.duration });
+
+  // Manage Android Navigation Bar for immersive video playback (black theme, auto-hide)
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      NavigationBar.setBackgroundColorAsync('#000000');
+      NavigationBar.setButtonStyleAsync('light');
+      NavigationBar.setBehaviorAsync('overlay-swipe');
+    }
+    return () => {
+      if (Platform.OS === 'android') {
+        NavigationBar.setBackgroundColorAsync('#0B0C10');
+        NavigationBar.setButtonStyleAsync('light');
+        NavigationBar.setVisibilityAsync('visible');
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      if (isFullscreen || !showControls) {
+        NavigationBar.setVisibilityAsync('hidden');
+      } else {
+        NavigationBar.setVisibilityAsync('visible');
+      }
+    }
+  }, [isFullscreen, showControls]);
 
   // Check watch history on mount
   useEffect(() => {
@@ -225,6 +254,24 @@ export const PlayerScreen: React.FC<PlayerScreenProps> = ({ asset, onClose }) =>
         </Animated.View>
       )}
 
+      {/* Audio Decoder Fallback Notice Banner - Safely below notch */}
+      {audioNotice && !playerError && (
+        <View
+          style={[
+            styles.noticeBanner,
+            { top: Math.max(insets.top + (resumePromptPosition ? 80 : 16), 24) },
+          ]}
+        >
+          <Ionicons name="volume-mute-outline" size={18} color={COLORS.accentYellow} />
+          <Text style={styles.noticeText} numberOfLines={2}>
+            {audioNotice}
+          </Text>
+          <TouchableOpacity onPress={dismissAudioNotice} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Ionicons name="close" size={16} color={COLORS.textMuted} />
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Notch-Safe Custom Player UI Overlay with 3.5s Auto-Hide */}
       {showControls && !playerError && (
         <PlayerOverlay
@@ -273,6 +320,8 @@ export const PlayerScreen: React.FC<PlayerScreenProps> = ({ asset, onClose }) =>
         textTracks={textTracks}
         selectedAudioIndex={selectedAudioTrackIndex}
         selectedTextIndex={selectedTextTrackIndex}
+        isAudioMuted={isAudioMutedFallback}
+        onDisableAudio={playWithoutAudio}
         onSelectAudio={selectAudioTrack}
         onSelectSubtitle={selectTextTrack}
         initialTab={trackModalTab}
@@ -382,6 +431,33 @@ const styles = StyleSheet.create({
   },
   dismissButton: {
     padding: 4,
+  },
+  noticeBanner: {
+    position: 'absolute',
+    alignSelf: 'center',
+    maxWidth: '90%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(26, 28, 40, 0.96)',
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(234, 179, 8, 0.4)',
+    zIndex: 26,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 7,
+    gap: 8,
+  },
+  noticeText: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 16,
   },
   modalBackdrop: {
     flex: 1,

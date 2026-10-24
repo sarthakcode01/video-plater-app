@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, BackHandler } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, BackHandler, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import * as NavigationBar from 'expo-navigation-bar';
 import { MediaLibraryProvider } from './src/context/MediaLibraryContext';
 import { LibraryScreen } from './src/screens/LibraryScreen';
 import { PlayerScreen } from './src/screens/PlayerScreen';
@@ -11,8 +12,16 @@ import { COLORS } from './src/constants/theme';
 export default function App() {
   const [selectedVideo, setSelectedVideo] = useState<VideoAsset | null>(null);
 
+  // Configure Android System Navigation Bar to match dark theme (prevent white navigation bar)
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      NavigationBar.setBackgroundColorAsync('#0B0C10');
+      NavigationBar.setButtonStyleAsync('light');
+    }
+  }, []);
+
   // Handle hardware back button on Android
-  React.useEffect(() => {
+  useEffect(() => {
     const onBackPress = () => {
       if (selectedVideo) {
         setSelectedVideo(null);

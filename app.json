@@ -27,6 +27,10 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0F1016"
       },
+      "navigationBar": {
+        "backgroundColor": "#0B0C10",
+        "barStyle": "light-content"
+      },
       "package": "com.anonymous.mobilevideoplayer",
       "permissions": [
         "android.permission.READ_MEDIA_VIDEO",
@@ -37,6 +41,13 @@
     },
     "plugins": [
       "expo-dev-client",
+      [
+        "expo-navigation-bar",
+        {
+          "backgroundColor": "#0B0C10",
+          "style": "light"
+        }
+      ],
       [
         "expo-media-library",
         {

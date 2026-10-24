@@ -112,9 +112,24 @@ export function useVideoPlayerController({ initialDuration = 0 }: UseVideoPlayer
   // Codec Error & Diagnostic State
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [diagnostic, setDiagnostic] = useState<CodecDiagnostic | null>(null);
+  const [audioNotice, setAudioNotice] = useState<string | null>(null);
   const [playerKey, setPlayerKey] = useState<number>(1);
   const [isAudioMutedFallback, setIsAudioMutedFallback] = useState<boolean>(false);
   const hasAttemptedAudioFallbackRef = useRef<boolean>(false);
+
+  // Auto-dismiss audio notice after 8 seconds
+  useEffect(() => {
+    if (audioNotice) {
+      const timer = setTimeout(() => {
+        setAudioNotice(null);
+      }, 8000);
+      return () => clearTimeout(timer);
+    }
+  }, [audioNotice]);
+
+  const dismissAudioNotice = useCallback(() => {
+    setAudioNotice(null);
+  }, []);
 
   // Clean up player reference on unmount to free hardware decoders
   useEffect(() => {
@@ -360,29 +375,46 @@ export function useVideoPlayerController({ initialDuration = 0 }: UseVideoPlayer
     setDiagnostic(parsed);
 
     if (parsed.isDecoderInitFailed) {
-      // If the failure is specifically an audio decoder issue and there are other tracks
-      if (parsed.failedCategory === 'audio' && audioTracks.length > 1 && !hasAttemptedAudioFallbackRef.current) {
-        hasAttemptedAudioFallbackRef.current = true;
-        const nextIndex = selectedAudioTrackIndex === 0 ? 1 : 0;
-        console.warn(`Audio decoder failed (${parsed.detectedCodec}). Auto-switching to audio track index ${nextIndex}`);
-        setSelectedAudioTrackIndex(nextIndex);
-        setPlayerError(null);
-        setPlayerKey((k) => k + 1); // Force fresh native instance
-        setIsPlaying(true);
-        return;
+      // If the failure is an audio decoder issue (Dolby AC3/EAC3, DTS, TrueHD)
+      if (parsed.failedCategory === 'audio') {
+        // Step 1: If there are alternate audio tracks available, switch to secondary track
+        if (audioTracks.length > 1 && !hasAttemptedAudioFallbackRef.current) {
+          hasAttemptedAudioFallbackRef.current = true;
+          const nextIndex = selectedAudioTrackIndex === 0 ? 1 : 0;
+          console.warn(`Audio decoder failed (${parsed.detectedCodec}). Auto-switching to audio track index ${nextIndex}`);
+          setSelectedAudioTrackIndex(nextIndex);
+          setPlayerError(null);
+          setAudioNotice(`Switched audio track: ${parsed.detectedCodec || 'Dolby'} format unsupported by phone hardware.`);
+          setPlayerKey((k) => k + 1); // Force fresh native instance
+          setIsPlaying(true);
+          return;
+        }
+
+        // Step 2: If there are no other tracks or switching failed, AUTOMATICALLY play video with subtitles!
+        if (!isAudioMutedFallback) {
+          console.warn(`Audio decoder failed (${parsed.detectedCodec}). Automatically engaging subtitle playback fallback.`);
+          hasAttemptedAudioFallbackRef.current = true;
+          setIsAudioMutedFallback(true);
+          setPlayerError(null);
+          setAudioNotice(`${parsed.detectedCodec || 'Dolby Digital (AC3/EAC3)'} is unsupported by phone hardware. Playing video with subtitles.`);
+          setPlayerKey((k) => k + 1); // Remount native player cleanly with audio disabled
+          setIsPlaying(true);
+          return;
+        }
       }
 
       setPlayerError(parsed.userExplanation);
     } else {
       setPlayerError(parsed.userExplanation);
     }
-  }, [audioTracks, selectedAudioTrackIndex]);
+  }, [audioTracks, selectedAudioTrackIndex, isAudioMutedFallback]);
 
   // Watch video-only (mutes/disables failing audio stream so video plays smoothly with subtitles)
   const playWithoutAudio = useCallback(() => {
     setIsAudioMutedFallback(true);
     setPlayerError(null);
     setDiagnostic(null);
+    setAudioNotice('Playing in subtitle mode (audio stream disabled).');
     setIsBuffering(true);
     setIsPlaying(true);
     setPlayerKey((k) => k + 1); // Remount native player cleanly
@@ -391,6 +423,8 @@ export function useVideoPlayerController({ initialDuration = 0 }: UseVideoPlayer
   const retryPlayback = useCallback(() => {
     setPlayerError(null);
     setDiagnostic(null);
+    setAudioNotice(null);
+    setIsAudioMutedFallback(false);
     setIsBuffering(true);
     setIsPlaying(true);
     hasAttemptedAudioFallbackRef.current = false;
@@ -434,6 +468,8 @@ export function useVideoPlayerController({ initialDuration = 0 }: UseVideoPlayer
     selectTextTrack,
     isAudioMutedFallback,
     playWithoutAudio,
+    audioNotice,
+    dismissAudioNotice,
     // UI visibility & Inactivity timer
     showControls,
     setShowControls,
