@@ -25,6 +25,16 @@ export const SafeNavigationBar = {
     }
   },
 
+  setBorderColorAsync: async (color: string): Promise<void> => {
+    try {
+      if (NavigationBarModule?.setBorderColorAsync) {
+        await NavigationBarModule.setBorderColorAsync(color);
+      }
+    } catch (e) {
+      // Ignored: only available on Android API 28+
+    }
+  },
+
   setButtonStyleAsync: async (style: 'light' | 'dark'): Promise<void> => {
     try {
       if (NavigationBarModule?.setButtonStyleAsync) {

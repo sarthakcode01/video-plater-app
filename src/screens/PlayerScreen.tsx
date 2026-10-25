@@ -92,12 +92,14 @@ export const PlayerScreen: React.FC<PlayerScreenProps> = ({ asset, onClose }) =>
   useEffect(() => {
     if (Platform.OS === 'android') {
       SafeNavigationBar.setBackgroundColorAsync('#000000');
+      SafeNavigationBar.setBorderColorAsync('#000000');
       SafeNavigationBar.setButtonStyleAsync('light');
       SafeNavigationBar.setBehaviorAsync('overlay-swipe');
     }
     return () => {
       if (Platform.OS === 'android') {
         SafeNavigationBar.setBackgroundColorAsync('#0B0C10');
+        SafeNavigationBar.setBorderColorAsync('#0B0C10');
         SafeNavigationBar.setButtonStyleAsync('light');
         SafeNavigationBar.setVisibilityAsync('visible');
       }

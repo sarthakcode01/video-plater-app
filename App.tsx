@@ -16,6 +16,7 @@ export default function App() {
   useEffect(() => {
     if (Platform.OS === 'android') {
       SafeNavigationBar.setBackgroundColorAsync('#0B0C10');
+      SafeNavigationBar.setBorderColorAsync('#0B0C10');
       SafeNavigationBar.setButtonStyleAsync('light');
     }
   }, []);
