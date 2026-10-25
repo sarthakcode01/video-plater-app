@@ -10,6 +10,7 @@ import {
   Platform,
 } from 'react-native';
 import Video, { SelectedTrackType } from 'react-native-video';
+import { VLCPlayer } from 'react-native-vlc-media-player';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SafeNavigationBar } from '../utils/safeNavigationBar';
 import { VideoAsset, PlaybackSpeed } from '../types/video';
@@ -45,6 +46,8 @@ export const PlayerScreen: React.FC<PlayerScreenProps> = ({ asset, onClose }) =>
 
   const {
     playerRef,
+    vlcRef,
+    engine,
     playerKey,
     isPlaying,
     isBuffering,
@@ -86,6 +89,11 @@ export const PlayerScreen: React.FC<PlayerScreenProps> = ({ asset, onClose }) =>
     onProgress,
     onBuffer,
     onEnd,
+    onVlcLoad,
+    onVlcProgress,
+    onVlcBuffering,
+    onVlcPlaying,
+    onVlcError,
   } = useVideoPlayerController({ initialDuration: asset.duration });
 
   // Manage Android Navigation Bar for immersive video playback (black theme, auto-hide)
@@ -134,9 +142,12 @@ export const PlayerScreen: React.FC<PlayerScreenProps> = ({ asset, onClose }) =>
     })();
   }, [asset.id, asset.duration, resumeBannerAnim]);
 
-  // Periodically save playback position
+  // Periodically save playback position (throttled: progress ticks several times per
+  // second, and writing AsyncStorage on every tick floods the JS thread)
+  const lastSavedTimeRef = useRef<number>(0);
   useEffect(() => {
-    if (currentTime > 5 && duration > 0) {
+    if (currentTime > 5 && duration > 0 && Math.abs(currentTime - lastSavedTimeRef.current) >= 5) {
+      lastSavedTimeRef.current = currentTime;
       savePlaybackPosition(asset.id, currentTime, duration);
     }
   }, [asset.id, currentTime, duration]);
@@ -183,7 +194,30 @@ export const PlayerScreen: React.FC<PlayerScreenProps> = ({ asset, onClose }) =>
         onHoldStart={onHoldStart}
         onHoldEnd={onHoldEnd}
       >
-        {/* Native Video Engine with TextureView & Buffer Tuning for Decoder Reliability */}
+        {engine === 'vlc' ? (
+          /* libVLC engine with software decoders (Dolby AC3/EAC3, DTS, TrueHD) used after a hardware decoder failure */
+          <VLCPlayer
+            key={`vlc-${playerKey}`}
+            ref={vlcRef}
+            source={{ uri: asset.uri }}
+            style={styles.videoPlayer}
+            paused={!isPlaying}
+            rate={effectiveSpeed}
+            resizeMode="contain"
+            muted={isAudioMutedFallback}
+            audioTrack={
+              isAudioMutedFallback ? -1 : selectedAudioTrackIndex !== null ? selectedAudioTrackIndex : undefined
+            }
+            textTrack={selectedTextTrackIndex !== null ? selectedTextTrackIndex : -1}
+            onLoad={onVlcLoad}
+            onProgress={onVlcProgress}
+            onBuffering={onVlcBuffering}
+            onPlaying={onVlcPlaying}
+            onEnd={onEnd}
+            onError={onVlcError}
+          />
+        ) : (
+        /* Native Video Engine with TextureView & Buffer Tuning for Decoder Reliability */
         <Video
           key={playerKey}
           ref={playerRef}
@@ -193,7 +227,7 @@ export const PlayerScreen: React.FC<PlayerScreenProps> = ({ asset, onClose }) =>
           paused={!isPlaying}
           rate={effectiveSpeed}
           resizeMode="contain"
-          progressUpdateInterval={250}
+          progressUpdateInterval={500}
           useTextureView={Platform.OS === 'android'} // Fixes ERROR_CODE_DECODER_INIT_FAILED surface conflicts on Android
           bufferConfig={{
             minBufferMs: 15000,
@@ -222,6 +256,7 @@ export const PlayerScreen: React.FC<PlayerScreenProps> = ({ asset, onClose }) =>
           onError={onError}
           repeat={false}
         />
+        )}
 
         {/* YouTube Double-Tap Animated Ripple Indicator */}
         <DoubleTapRippleIndicator side={doubleTapSide} seconds={accumulatedSeek} />

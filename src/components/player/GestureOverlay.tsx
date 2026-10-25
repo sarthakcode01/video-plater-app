@@ -42,7 +42,8 @@ export const GestureOverlay: React.FC<GestureOverlayProps> = ({
     // 2. Double-Tap recognizer: Screen zone partitioning (Left 40% vs Right 40% vs Center 20%)
     const doubleTap = Gesture.Tap()
       .numberOfTaps(2)
-      .maxDelay(320)
+      // Single taps wait out this window before firing, so keep it short for snappy control toggling
+      .maxDelay(250)
       .onEnd((e) => {
         'worklet';
         const x = e.x;
