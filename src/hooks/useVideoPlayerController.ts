@@ -442,18 +442,24 @@ export function useVideoPlayerController({ initialDuration = 0 }: UseVideoPlayer
     const parsed = parseExoPlayerError(error);
     setDiagnostic(parsed);
 
-    if (parsed.isDecoderInitFailed && !hasAttemptedAudioFallbackRef.current) {
+    // Any playback failure (not only decoder init) gets one try with VLC before showing an error
+    if (!hasAttemptedAudioFallbackRef.current) {
       hasAttemptedAudioFallbackRef.current = true;
-      console.warn(`Hardware decoder failed (${parsed.detectedCodec}). Switching to VLC software decoding.`);
+      console.warn(`Hardware playback failed (${parsed.detectedCodec ?? 'unknown'}). Switching to VLC software decoding.`);
       pendingVlcSeekRef.current = currentTimeRef.current > 1 ? currentTimeRef.current : null;
       setEngine('vlc');
+      // Exo track indexes do not match VLC track ids; onVlcLoad repopulates them
+      setAudioTracks([]);
+      setTextTracks([]);
+      setSelectedAudioTrackIndex(null);
+      setSelectedTextTrackIndex(null);
       setIsAudioMutedFallback(false);
       setPlayerError(null);
       setDiagnostic(null);
       setIsBuffering(true);
       setIsPlaying(true);
       setAudioNotice(
-        `${parsed.detectedCodec || 'This format'} is unsupported by phone hardware. Playing with software decoding.`
+        `${parsed.detectedCodec || 'This file'} is not supported by phone hardware. Playing with software decoding.`
       );
       return;
     }
