@@ -349,6 +349,27 @@ export function useVideoPlayerController({ initialDuration = 0 }: UseVideoPlayer
     [seekTo, resetInactivityTimer]
   );
 
+  // Hand the file over to libVLC (software decoders for Dolby AC3/EAC3/DDP, DTS, TrueHD, HEVC 10-bit).
+  // Only attempted once per file; if VLC also fails, onVlcError shows the error screen.
+  const switchToVlc = useCallback((reason: string) => {
+    if (hasAttemptedAudioFallbackRef.current) return false;
+    hasAttemptedAudioFallbackRef.current = true;
+    console.warn(`${reason} Switching to VLC software decoding.`);
+    pendingVlcSeekRef.current = currentTimeRef.current > 1 ? currentTimeRef.current : null;
+    setEngine('vlc');
+    // Exo track indexes do not match VLC track ids; onVlcLoad repopulates them
+    setAudioTracks([]);
+    setTextTracks([]);
+    setSelectedAudioTrackIndex(null);
+    setSelectedTextTrackIndex(null);
+    setIsAudioMutedFallback(false);
+    setPlayerError(null);
+    setDiagnostic(null);
+    setIsBuffering(true);
+    setIsPlaying(true);
+    return true;
+  }, []);
+
   // Stream Metadata Extraction on Load
   const onLoad = useCallback((data: OnLoadData) => {
     setIsBuffering(false);
@@ -367,6 +388,16 @@ export function useVideoPlayerController({ initialDuration = 0 }: UseVideoPlayer
         type: item.type,
         selected: item.selected,
       }));
+      // ExoPlayer does not raise an error for an audio codec the phone can't decode (e.g. Dolby
+      // Digital Plus / DDP5.1): it silently plays video only and leaves every audio track unselected.
+      if (parsedAudio.length > 0 && !parsedAudio.some((t) => t.selected)) {
+        const codecs = Array.from(new Set(parsedAudio.map((t) => t.type).filter(Boolean))).join(', ');
+        if (switchToVlc(`No playable audio track (${codecs || 'unknown codec'}).`)) {
+          setAudioNotice('Audio format not supported by phone hardware. Playing with software decoding.');
+          return;
+        }
+      }
+
       setAudioTracks(parsedAudio);
 
       const selected = parsedAudio.find((t) => t.selected);
@@ -394,7 +425,7 @@ export function useVideoPlayerController({ initialDuration = 0 }: UseVideoPlayer
         setSelectedTextTrackIndex(null);
       }
     }
-  }, []);
+  }, [switchToVlc]);
 
   const selectAudioTrack = useCallback((index: number) => {
     setSelectedAudioTrackIndex(index);
@@ -443,21 +474,7 @@ export function useVideoPlayerController({ initialDuration = 0 }: UseVideoPlayer
     setDiagnostic(parsed);
 
     // Any playback failure (not only decoder init) gets one try with VLC before showing an error
-    if (!hasAttemptedAudioFallbackRef.current) {
-      hasAttemptedAudioFallbackRef.current = true;
-      console.warn(`Hardware playback failed (${parsed.detectedCodec ?? 'unknown'}). Switching to VLC software decoding.`);
-      pendingVlcSeekRef.current = currentTimeRef.current > 1 ? currentTimeRef.current : null;
-      setEngine('vlc');
-      // Exo track indexes do not match VLC track ids; onVlcLoad repopulates them
-      setAudioTracks([]);
-      setTextTracks([]);
-      setSelectedAudioTrackIndex(null);
-      setSelectedTextTrackIndex(null);
-      setIsAudioMutedFallback(false);
-      setPlayerError(null);
-      setDiagnostic(null);
-      setIsBuffering(true);
-      setIsPlaying(true);
+    if (switchToVlc(`Hardware playback failed (${parsed.detectedCodec ?? 'unknown'}).`)) {
       setAudioNotice(
         `${parsed.detectedCodec || 'This file'} is not supported by phone hardware. Playing with software decoding.`
       );
@@ -465,7 +482,7 @@ export function useVideoPlayerController({ initialDuration = 0 }: UseVideoPlayer
     }
 
     setPlayerError(parsed.userExplanation);
-  }, []);
+  }, [switchToVlc]);
 
   // ---- libVLC (software decoding) event handlers. VLC reports times in milliseconds. ----
   const onVlcLoad = useCallback((info: VideoInfo) => {

@@ -259,7 +259,7 @@ export const PlayerScreen: React.FC<PlayerScreenProps> = ({ asset, onClose }) =>
             key={`vlc-${playerKey}`}
             ref={vlcRef}
             source={{ uri: asset.uri }}
-            style={styles.videoPlayer}
+            style={styles.vlcPlayer}
             paused={!isPlaying}
             rate={effectiveSpeed}
             resizeMode={vlcResizeMode}
@@ -519,6 +519,11 @@ const styles = StyleSheet.create({
   videoPlayer: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#000000',
+  },
+  // No backgroundColor: VLC renders into a TextureView, which crashes if given a background
+  // ("TextureView doesn't support displaying a background drawable"). The container is already black.
+  vlcPlayer: {
+    ...StyleSheet.absoluteFillObject,
   },
   toast: {
     position: 'absolute',
