@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   StyleSheet,
@@ -8,16 +8,18 @@ import {
   TouchableOpacity,
   Animated,
   Platform,
+  LayoutChangeEvent,
 } from 'react-native';
 import Video, { SelectedTrackType } from 'react-native-video';
 import { VLCPlayer } from 'react-native-vlc-media-player';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SafeNavigationBar } from '../utils/safeNavigationBar';
-import { VideoAsset, PlaybackSpeed } from '../types/video';
-import { useVideoPlayerController } from '../hooks/useVideoPlayerController';
+import { VideoAsset, PlaybackSpeed, AspectMode } from '../types/video';
+import { useVideoPlayerController, HOLD_SPEED_OPTIONS } from '../hooks/useVideoPlayerController';
 import { useOrientation } from '../hooks/useOrientation';
 import { PlayerOverlay } from '../components/player/PlayerOverlay';
 import { DoubleTapRippleIndicator } from '../components/player/DoubleTapRippleIndicator';
+import { HoldSpeedIndicator } from '../components/player/HoldSpeedIndicator';
 import { GestureOverlay } from '../components/player/GestureOverlay';
 import { TrackSelectorModal } from '../components/player/TrackSelectorModal';
 import { PlayerErrorFallback } from '../components/player/PlayerErrorFallback';
@@ -25,6 +27,14 @@ import { COLORS, SPEED_PRESETS, SPACING } from '../constants/theme';
 import { formatDuration } from '../utils/formatters';
 import { savePlaybackPosition, getPlaybackPosition } from '../utils/watchHistory';
 import { Ionicons } from '@expo/vector-icons';
+
+const ASPECT_LABELS: Record<AspectMode, string> = {
+  fit: 'Fit',
+  fill: 'Stretch',
+  zoom: 'Zoom',
+  '16:9': '16:9',
+  '4:3': '4:3',
+};
 
 interface PlayerScreenProps {
   asset: VideoAsset;
@@ -42,7 +52,7 @@ export const PlayerScreen: React.FC<PlayerScreenProps> = ({ asset, onClose }) =>
   const resumeBannerAnim = useRef(new Animated.Value(0)).current;
 
   // Landscape Fullscreen Orientation Controller
-  const { isFullscreen, toggleFullscreen, exitFullscreen } = useOrientation(false);
+  const { isFullscreen, isLocked, toggleLock, toggleFullscreen, exitFullscreen } = useOrientation(false);
 
   const {
     playerRef,
@@ -60,7 +70,11 @@ export const PlayerScreen: React.FC<PlayerScreenProps> = ({ asset, onClose }) =>
     baseSpeed,
     setBaseSpeed,
     effectiveSpeed,
-    isSpeedBoosted,
+    holdSpeed,
+    setHoldSpeed,
+    holdSide,
+    aspectMode,
+    cycleAspectMode,
     doubleTapSide,
     accumulatedSeek,
     handleDoubleTapSeek,
@@ -96,13 +110,66 @@ export const PlayerScreen: React.FC<PlayerScreenProps> = ({ asset, onClose }) =>
     onVlcError,
   } = useVideoPlayerController({ initialDuration: asset.duration });
 
-  // Manage Android Navigation Bar for immersive video playback (black theme, auto-hide)
+  // Short on-screen message for aspect ratio / orientation lock changes
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = useCallback((message: string) => {
+    setToast(message);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 1200);
+  }, []);
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
+
+  const isFirstAspectRender = useRef(true);
+  useEffect(() => {
+    if (isFirstAspectRender.current) {
+      isFirstAspectRender.current = false;
+      return;
+    }
+    showToast(`Aspect ratio: ${ASPECT_LABELS[aspectMode]}`);
+  }, [aspectMode, showToast]);
+
+  const handleToggleLock = useCallback(async () => {
+    const willLock = !isLocked;
+    await toggleLock();
+    showToast(willLock ? 'Orientation locked' : 'Auto-rotate on');
+  }, [isLocked, toggleLock, showToast]);
+
+  // Video box: Fit/Stretch/Zoom fill the screen (resizeMode does the work); 16:9 and 4:3
+  // are a centered box with that exact ratio, with the video stretched to fill it.
+  const [containerSize, setContainerSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+  const handleContainerLayout = useCallback((event: LayoutChangeEvent) => {
+    const { width, height } = event.nativeEvent.layout;
+    setContainerSize((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
+  }, []);
+
+  const videoBoxStyle = useMemo(() => {
+    const ratio = aspectMode === '16:9' ? 16 / 9 : aspectMode === '4:3' ? 4 / 3 : null;
+    const { width: cw, height: ch } = containerSize;
+    if (!ratio || cw === 0 || ch === 0) return styles.videoBoxFull;
+    const containerRatio = cw / ch;
+    return containerRatio > ratio
+      ? { width: ch * ratio, height: ch }
+      : { width: cw, height: cw / ratio };
+  }, [aspectMode, containerSize]);
+
+  const exoResizeMode = aspectMode === 'fit' ? 'contain' : aspectMode === 'zoom' ? 'cover' : 'stretch';
+  const vlcResizeMode = aspectMode === 'fit' ? 'contain' : aspectMode === 'zoom' ? 'cover' : 'fill';
+
+  // Immersive playback: hide the system nav bar for the whole session. It must not follow
+  // showControls, or the window resizes on every tap and the video jumps. The status bar is
+  // hidden the same way below. Swiping from the screen edge brings the bars back temporarily.
   useEffect(() => {
     if (Platform.OS === 'android') {
       SafeNavigationBar.setBackgroundColorAsync('#000000');
       SafeNavigationBar.setBorderColorAsync('#000000');
       SafeNavigationBar.setButtonStyleAsync('light');
       SafeNavigationBar.setBehaviorAsync('overlay-swipe');
+      SafeNavigationBar.setVisibilityAsync('hidden');
     }
     return () => {
       if (Platform.OS === 'android') {
@@ -113,16 +180,6 @@ export const PlayerScreen: React.FC<PlayerScreenProps> = ({ asset, onClose }) =>
       }
     };
   }, []);
-
-  useEffect(() => {
-    if (Platform.OS === 'android') {
-      if (isFullscreen || !showControls) {
-        SafeNavigationBar.setVisibilityAsync('hidden');
-      } else {
-        SafeNavigationBar.setVisibilityAsync('visible');
-      }
-    }
-  }, [isFullscreen, showControls]);
 
   // Check watch history on mount
   useEffect(() => {
@@ -181,7 +238,7 @@ export const PlayerScreen: React.FC<PlayerScreenProps> = ({ asset, onClose }) =>
     <View style={styles.container}>
       {/* Notch-safe edge-to-edge status bar configuration */}
       <StatusBar
-        hidden={isFullscreen || !showControls}
+        hidden={true}
         barStyle="light-content"
         backgroundColor="#000000"
         translucent={true}
@@ -194,6 +251,8 @@ export const PlayerScreen: React.FC<PlayerScreenProps> = ({ asset, onClose }) =>
         onHoldStart={onHoldStart}
         onHoldEnd={onHoldEnd}
       >
+        <View style={styles.videoStage} onLayout={handleContainerLayout} pointerEvents="none">
+        <View style={videoBoxStyle}>
         {engine === 'vlc' ? (
           /* libVLC engine with software decoders (Dolby AC3/EAC3, DTS, TrueHD) used after a hardware decoder failure */
           <VLCPlayer
@@ -203,7 +262,7 @@ export const PlayerScreen: React.FC<PlayerScreenProps> = ({ asset, onClose }) =>
             style={styles.videoPlayer}
             paused={!isPlaying}
             rate={effectiveSpeed}
-            resizeMode="contain"
+            resizeMode={vlcResizeMode}
             muted={isAudioMutedFallback}
             audioTrack={
               isAudioMutedFallback ? -1 : selectedAudioTrackIndex !== null ? selectedAudioTrackIndex : undefined
@@ -226,7 +285,7 @@ export const PlayerScreen: React.FC<PlayerScreenProps> = ({ asset, onClose }) =>
           controls={false}
           paused={!isPlaying}
           rate={effectiveSpeed}
-          resizeMode="contain"
+          resizeMode={exoResizeMode}
           progressUpdateInterval={500}
           useTextureView={Platform.OS === 'android'} // Fixes ERROR_CODE_DECODER_INIT_FAILED surface conflicts on Android
           bufferConfig={{
@@ -257,10 +316,22 @@ export const PlayerScreen: React.FC<PlayerScreenProps> = ({ asset, onClose }) =>
           repeat={false}
         />
         )}
+        </View>
+        </View>
 
         {/* YouTube Double-Tap Animated Ripple Indicator */}
         <DoubleTapRippleIndicator side={doubleTapSide} seconds={accumulatedSeek} />
       </GestureOverlay>
+
+      {/* Fast-forward indicator while holding the left/right side */}
+      <HoldSpeedIndicator side={holdSide} speed={holdSpeed} />
+
+      {/* Aspect ratio / orientation lock feedback */}
+      {toast && (
+        <View style={styles.toast} pointerEvents="none">
+          <Text style={styles.toastText}>{toast}</Text>
+        </View>
+      )}
 
       {/* Resume Playback Banner - Positioned safely below notch */}
       {resumePromptPosition && (
@@ -319,8 +390,11 @@ export const PlayerScreen: React.FC<PlayerScreenProps> = ({ asset, onClose }) =>
           duration={duration}
           isScrubbing={isScrubbing}
           playbackSpeed={baseSpeed}
-          isSpeedBoosted={isSpeedBoosted}
           isFullscreen={isFullscreen}
+          isOrientationLocked={isLocked}
+          aspectLabel={ASPECT_LABELS[aspectMode]}
+          onCycleAspect={cycleAspectMode}
+          onToggleOrientationLock={handleToggleLock}
           audioTracksCount={audioTracks.length}
           textTracksCount={textTracks.length}
           onTogglePlayPause={togglePlayPause}
@@ -403,6 +477,23 @@ export const PlayerScreen: React.FC<PlayerScreenProps> = ({ asset, onClose }) =>
                 )}
               </TouchableOpacity>
             ))}
+
+            <Text style={[styles.speedModalTitle, styles.holdSpeedTitle]}>Hold speed (edge hold)</Text>
+            <View style={styles.holdSpeedRow}>
+              {HOLD_SPEED_OPTIONS.map((speed) => (
+                <TouchableOpacity
+                  key={speed}
+                  style={[styles.holdSpeedChip, holdSpeed === speed && styles.holdSpeedChipSelected]}
+                  onPress={() => setHoldSpeed(speed)}
+                >
+                  <Text
+                    style={[styles.holdSpeedChipText, holdSpeed === speed && styles.speedOptionTextSelected]}
+                  >
+                    {speed}x
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
         </TouchableOpacity>
       </Modal>
@@ -416,9 +507,58 @@ const styles = StyleSheet.create({
     backgroundColor: '#000000',
     position: 'relative',
   },
+  videoStage: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  videoBoxFull: {
+    width: '100%',
+    height: '100%',
+  },
   videoPlayer: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#000000',
+  },
+  toast: {
+    position: 'absolute',
+    alignSelf: 'center',
+    top: '45%',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 20,
+    zIndex: 28,
+  },
+  toastText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  holdSpeedTitle: {
+    marginTop: SPACING.md,
+  },
+  holdSpeedRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 6,
+  },
+  holdSpeedChip: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  holdSpeedChipSelected: {
+    backgroundColor: 'rgba(99, 102, 241, 0.15)',
+    borderColor: COLORS.primary,
+  },
+  holdSpeedChipText: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
   },
   resumeBanner: {
     position: 'absolute',

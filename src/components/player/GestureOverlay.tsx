@@ -2,11 +2,12 @@ import React, { useState, useMemo } from 'react';
 import { View, StyleSheet, Dimensions, LayoutChangeEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
+import { HoldSide } from '../../types/video';
 
 interface GestureOverlayProps {
   onSingleTap: () => void;
   onDoubleTapSeek: (side: 'left' | 'right') => void;
-  onHoldStart: () => void;
+  onHoldStart: (side: HoldSide) => void;
   onHoldEnd: () => void;
   children?: React.ReactNode;
 }
@@ -63,16 +64,24 @@ export const GestureOverlay: React.FC<GestureOverlayProps> = ({
         }
       });
 
-    // 3. Long-Press recognizer: Triggers after 250ms of holding for Instagram-style 2x speed boost
+    // 3. Long-Press recognizer: holding the left or right 40% fast-forwards; the center 20% does nothing
     const longPress = Gesture.LongPress()
       .minDuration(250)
-      .onStart(() => {
+      .onStart((e) => {
         'worklet';
-        runOnJS(onHoldStart)();
+        const width = containerWidth;
+        if (e.x <= width * 0.4) {
+          runOnJS(onHoldStart)('left');
+        } else if (e.x >= width * 0.6) {
+          runOnJS(onHoldStart)('right');
+        }
       })
-      .onFinalize(() => {
+      .onFinalize((_e, success) => {
         'worklet';
-        runOnJS(onHoldEnd)();
+        // onFinalize also fires for plain taps; only end a hold that actually began
+        if (success) {
+          runOnJS(onHoldEnd)();
+        }
       });
 
     // Priority hierarchy:

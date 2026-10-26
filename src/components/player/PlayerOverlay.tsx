@@ -15,8 +15,9 @@ interface PlayerOverlayProps {
   duration: number;
   isScrubbing: boolean;
   playbackSpeed: PlaybackSpeed;
-  isSpeedBoosted: boolean;
   isFullscreen?: boolean;
+  isOrientationLocked?: boolean;
+  aspectLabel?: string;
   audioTracksCount?: number;
   textTracksCount?: number;
   onTogglePlayPause: () => void;
@@ -28,6 +29,8 @@ interface PlayerOverlayProps {
   onBack: () => void;
   onToggleSpeedMenu?: () => void;
   onToggleFullscreen?: () => void;
+  onToggleOrientationLock?: () => void;
+  onCycleAspect?: () => void;
   onOpenTracksMenu?: (tab: 'audio' | 'subtitles') => void;
 }
 
@@ -39,8 +42,9 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
   duration,
   isScrubbing,
   playbackSpeed,
-  isSpeedBoosted,
   isFullscreen = false,
+  isOrientationLocked = false,
+  aspectLabel,
   audioTracksCount = 0,
   textTracksCount = 0,
   onTogglePlayPause,
@@ -52,6 +56,8 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
   onBack,
   onToggleSpeedMenu,
   onToggleFullscreen,
+  onToggleOrientationLock,
+  onCycleAspect,
   onOpenTracksMenu,
 }) => {
   const insets = useSafeAreaInsets();
@@ -71,13 +77,6 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
 
   return (
     <View style={styles.overlayContainer} pointerEvents="box-none">
-      {/* 2x Speed Boost Banner (Hold to 2x indicator) */}
-      {isSpeedBoosted && (
-        <View style={[styles.speedBoostBanner, { top: Math.max(insets.top + 8, 45) }]}>
-          <Text style={styles.speedBoostText}>2x Speed &gt;&gt;</Text>
-        </View>
-      )}
-
       {/* Top Controls Bar - Notch Safe */}
       <View style={[styles.topBar, topBarPaddingStyle]}>
         <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
@@ -164,19 +163,46 @@ export const PlayerOverlay: React.FC<PlayerOverlayProps> = ({
             )}
           </View>
 
-          {onToggleFullscreen && (
-            <TouchableOpacity
-              style={styles.fullscreenButton}
-              onPress={onToggleFullscreen}
-              activeOpacity={0.7}
-            >
-              <Ionicons
-                name={isFullscreen ? 'contract-outline' : 'expand-outline'}
-                size={20}
-                color="#FFFFFF"
-              />
-            </TouchableOpacity>
-          )}
+          <View style={styles.bottomRightActions}>
+            {onCycleAspect && (
+              <TouchableOpacity
+                style={styles.aspectButton}
+                onPress={onCycleAspect}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="scan-outline" size={16} color="#FFFFFF" />
+                {aspectLabel ? <Text style={styles.aspectButtonText}>{aspectLabel}</Text> : null}
+              </TouchableOpacity>
+            )}
+
+            {onToggleOrientationLock && (
+              <TouchableOpacity
+                style={[styles.fullscreenButton, isOrientationLocked && styles.lockButtonActive]}
+                onPress={onToggleOrientationLock}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name={isOrientationLocked ? 'lock-closed' : 'lock-open-outline'}
+                  size={18}
+                  color={isOrientationLocked ? COLORS.accentYellow : '#FFFFFF'}
+                />
+              </TouchableOpacity>
+            )}
+
+            {onToggleFullscreen && (
+              <TouchableOpacity
+                style={styles.fullscreenButton}
+                onPress={onToggleFullscreen}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name={isFullscreen ? 'contract-outline' : 'expand-outline'}
+                  size={20}
+                  color="#FFFFFF"
+                />
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       </View>
     </View>
@@ -189,23 +215,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     backgroundColor: 'rgba(0, 0, 0, 0.4)',
     zIndex: 10,
-  },
-  speedBoostBanner: {
-    position: 'absolute',
-    alignSelf: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.accentYellow,
-    zIndex: 20,
-  },
-  speedBoostText: {
-    color: COLORS.accentYellow,
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 0.5,
   },
   topBar: {
     flexDirection: 'row',
@@ -279,6 +288,28 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: 12,
     fontWeight: '600',
+  },
+  bottomRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  aspectButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    paddingHorizontal: 10,
+    height: 36,
+    borderRadius: 18,
+  },
+  aspectButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  lockButtonActive: {
+    backgroundColor: 'rgba(234, 179, 8, 0.2)',
   },
   fullscreenButton: {
     width: 36,

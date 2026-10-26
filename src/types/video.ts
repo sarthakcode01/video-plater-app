@@ -52,3 +52,7 @@ export interface PlayerControlsState {
   selectedAudioTrackIndex: number | null;
   selectedTextTrackIndex: number | null; // null represents disabled/off
 }
+
+export type AspectMode = 'fit' | 'fill' | 'zoom' | '16:9' | '4:3';
+export type HoldSpeed = 1.5 | 2 | 3 | 4;
+export type HoldSide = 'left' | 'right';

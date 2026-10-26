@@ -1,10 +1,15 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { VideoRef, OnProgressData, OnLoadData, OnBufferData } from 'react-native-video';
 import type { VLCPlayer, VideoInfo } from 'react-native-vlc-media-player';
-import { PlaybackSpeed, AudioTrack, TextTrack } from '../types/video';
+import { PlaybackSpeed, AudioTrack, TextTrack, AspectMode, HoldSpeed, HoldSide } from '../types/video';
 
 const AUTO_HIDE_DELAY_MS = 3500;
+const HOLD_SPEED_STORAGE_KEY = '@video_player_hold_speed';
+const DEFAULT_HOLD_SPEED: HoldSpeed = 2;
+export const HOLD_SPEED_OPTIONS: HoldSpeed[] = [1.5, 2, 3, 4];
+export const ASPECT_MODES: AspectMode[] = ['fit', 'fill', 'zoom', '16:9', '4:3'];
 
 // 'exo' = react-native-video (hardware decoders), 'vlc' = libVLC (software decoders for AC3/EAC3/DTS/TrueHD)
 export type PlayerEngine = 'exo' | 'vlc';
@@ -105,8 +110,34 @@ export function useVideoPlayerController({ initialDuration = 0 }: UseVideoPlayer
   const [baseSpeed, setBaseSpeed] = useState<PlaybackSpeed>(1.0);
   const [isSpeedBoosted, setIsSpeedBoosted] = useState<boolean>(false);
 
-  // Effective speed (2.0x during hold; reverts to baseSpeed on release)
-  const effectiveSpeed = isSpeedBoosted ? 2.0 : baseSpeed;
+  // Hold-to-fast-forward: speed is user-adjustable and remembered between videos
+  const [holdSpeed, setHoldSpeedState] = useState<HoldSpeed>(DEFAULT_HOLD_SPEED);
+  const [holdSide, setHoldSide] = useState<HoldSide | null>(null);
+
+  useEffect(() => {
+    AsyncStorage.getItem(HOLD_SPEED_STORAGE_KEY)
+      .then((raw) => {
+        const parsed = raw ? Number(raw) : NaN;
+        if ((HOLD_SPEED_OPTIONS as number[]).includes(parsed)) {
+          setHoldSpeedState(parsed as HoldSpeed);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const setHoldSpeed = useCallback((speed: HoldSpeed) => {
+    setHoldSpeedState(speed);
+    AsyncStorage.setItem(HOLD_SPEED_STORAGE_KEY, String(speed)).catch(() => {});
+  }, []);
+
+  // Effective speed (holdSpeed during hold; reverts to baseSpeed on release)
+  const effectiveSpeed = isSpeedBoosted ? holdSpeed : baseSpeed;
+
+  // Aspect ratio mode (cycled from the overlay)
+  const [aspectMode, setAspectMode] = useState<AspectMode>('fit');
+  const cycleAspectMode = useCallback(() => {
+    setAspectMode((prev) => ASPECT_MODES[(ASPECT_MODES.indexOf(prev) + 1) % ASPECT_MODES.length]);
+  }, []);
 
   // UI overlay visibility & Auto-hide Timer
   const [showControls, setShowControls] = useState<boolean>(true);
@@ -272,13 +303,15 @@ export function useVideoPlayerController({ initialDuration = 0 }: UseVideoPlayer
     [doubleTapSide, seekRelative]
   );
 
-  // Instagram-Style Hold for 2x Speed
-  const onHoldStart = useCallback(() => {
+  // Hold the left or right side of the screen to fast-forward at holdSpeed
+  const onHoldStart = useCallback((side: HoldSide) => {
+    setHoldSide(side);
     setIsSpeedBoosted(true);
     setShowControls(false);
   }, []);
 
   const onHoldEnd = useCallback(() => {
+    setHoldSide(null);
     setIsSpeedBoosted(false);
     resetInactivityTimer();
   }, [resetInactivityTimer]);
@@ -546,6 +579,12 @@ export function useVideoPlayerController({ initialDuration = 0 }: UseVideoPlayer
     setBaseSpeed,
     effectiveSpeed,
     isSpeedBoosted,
+    holdSpeed,
+    setHoldSpeed,
+    holdSide,
+    // Aspect ratio
+    aspectMode,
+    cycleAspectMode,
     // Double tap seeking
     doubleTapSide,
     accumulatedSeek,
